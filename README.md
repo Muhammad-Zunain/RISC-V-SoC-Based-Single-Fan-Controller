@@ -1,1 +1,49 @@
-OBJECTIVE  Design an RV32I system that drives one simulated fan using PWM and provides SPI and UART interfaces. Configuration values are held in on-chip SRAM. RISC-V Core: Students must design a synthesizable 32-bit RV32I single-cycle or multicycle core with instruction memory, data memory, and memory-mapped peripheral access. Pipelining, caches, MMU, compressed instructions, and advanced cores are not required. Main Modules: RV32I core; instruction/data/configuration SRAMs; single-channel PWM fan controller; SPI master; UART transmitter/receiver; virtual fan/UART terminal models. Expected Operation: The testbench preloads configuration SRAM, exercises SPI and UART transactions, and applies PWM settings through the peripheral interface. Closed-loop RPM control and multi-fan support are not required. Basic Verification: Verify core instructions, SRAM access, SPI transfers, PWM generation, UART transmit/receive, reset, and normal/error status reporting. Use a directed, self-checking SystemVerilog testbench with reset tests and representative normal/error cases. Physical Design: Run synthesis and the assigned physical-design flow for the complete top-level design: constraints, floorplan, power plan, placement, clock-tree synthesis, routing, and sign-off checks. Report area, timing, power, congestion, DRC, and LVS results using the provided PDK/library and tools. UVM Verification: Verify core instructions, SPI transfers, PWM generation, RPM measurement, profile loading, stall detection, and fail-safe behavior. Use UVM agents, sequences, scoreboards, assertions, functional coverage, and code coverage. FINAL DELIVERABLES  Synthesizable RTL, SRAM integration, basic self-checking simulation, timing constraints, synthesis and physicaldesign reports, final layout screenshots, and a brief architecture document. 
+# RISC-V SoC-Based Single-Fan Controller with PWM, SPI, and UART
+
+## 📌 Project Overview
+This project involves the design and verification of a 32-bit System-on-Chip (SoC) based on the **RV32I** instruction set architecture. The primary objective is to drive a simulated cooling fan using a Pulse Width Modulation (PWM) signal while providing serial communication via SPI and UART interfaces. All configuration values are maintained in on-chip SRAM.
+
+## 🏗️ Architecture & Features
+- **RISC-V Core:** Synthesizable 32-bit RV32I core (Single-cycle / Multi-cycle). Implements standard integer computational instructions, control flow, and memory access without complex features like pipelining, MMU, or caches.
+- **Memory:** On-chip Instruction and Data SRAM blocks.
+- **Peripherals (Memory-Mapped):**
+  - **PWM Controller:** Single-channel generator to control fan speed.
+  - **SPI Master:** For high-speed synchronous serial communication.
+  - **UART Transceiver:** For asynchronous serial data transmission and reception.
+- **Interconnect:** Memory-mapped I/O structure connecting the core to memory and peripherals.
+
+## 🧪 Verification Methodology
+1. **Basic Verification:** 
+   - Directed, self-checking SystemVerilog testbenches.
+   - Verifies core instructions, SRAM read/write, SPI transfers, PWM generation, and UART Tx/Rx.
+2. **UVM Verification:** 
+   - Industry-standard Universal Verification Methodology (UVM).
+   - Includes agents, sequences, scoreboards, and coverage models to test fail-safe behaviors, stall detection, and robust RPM measurement.
+
+## ⚙️ Physical Design (ASIC Flow)
+The project includes a complete RTL-to-GDSII physical design flow:
+- Synthesis & Constraints definitions
+- Floorplanning & Power Planning
+- Placement & Clock-Tree Synthesis (CTS)
+- Routing & Sign-off Checks (DRC, LVS)
+- Detailed reporting on Area, Timing, Power, and Congestion.
+
+## 📂 Repository Structure
+```text
+📦 RISCV-Fan-Controller
+ ┣ 📂 rtl                 # Synthesizable SystemVerilog/Verilog source code
+ ┃ ┣ 📂 core              # ALU, Register File, Control Unit, Datapath
+ ┃ ┣ 📂 memory            # Instruction and Data SRAM modules
+ ┃ ┗ 📂 peripherals       # PWM, SPI, UART, and Memory Map controller
+ ┣ 📂 tb                  # Verification Environments
+ ┃ ┣ 📂 basic             # Directed SV Testbenches
+ ┃ ┗ 📂 uvm               # UVM testbenches, agents, and scoreboards
+ ┣ 📂 pd                  # Physical Design scripts, constraints, and reports
+ ┗ 📂 docs                # Architecture document, block diagrams, and layout screenshots
+```
+
+## 🚀 Getting Started
+*(Instructions for compiling, simulating using ModelSim/VCS, and running synthesis scripts will be added as the modules are developed in phases).*
+
+## 📝 License
+This project is developed for educational and academic purposes.
