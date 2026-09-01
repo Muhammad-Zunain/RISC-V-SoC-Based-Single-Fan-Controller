@@ -1,0 +1,47 @@
+# Multicycle RV32I + Quartus synchronous SRAM IP project.
+set_global_assignment -name FAMILY "Cyclone V"
+set_global_assignment -name DEVICE 5CSEMA5F31C6
+set_global_assignment -name TOP_LEVEL_ENTITY riscv_fan_soc_fpga_top
+set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
+set_global_assignment -name NUM_PARALLEL_PROCESSORS ALL
+
+
+# IMPORTANT: Generate these three IP variations from Tools > IP Catalog while
+# this Quartus project is open. Quartus normally adds their .qip/.ip assignment
+# automatically. If it does not, add the generated .qip files here manually:
+# set_global_assignment -name QIP_FILE ip/imem_ip/imem_ip.qip
+# set_global_assignment -name QIP_FILE ip/dmem_ip/dmem_ip.qip
+# set_global_assignment -name QIP_FILE ip/cfg_ip/cfg_ip.qip
+
+# Pin assignments remain board-specific. Add them only after confirming the
+# exact FPGA board and package pinout.
+
+set_global_assignment -name LAST_QUARTUS_VERSION "18.1.0 Lite Edition"
+set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
+set_global_assignment -name MAX_CORE_JUNCTION_TEMP 85
+set_global_assignment -name POWER_PRESET_COOLING_SOLUTION "23 MM HEAT SINK WITH 200 LFPM AIRFLOW"
+set_global_assignment -name POWER_BOARD_THERMAL_MODEL "NONE (CONSERVATIVE)"
+set_global_assignment -name QIP_FILE ip/dmem_ip.qip
+set_global_assignment -name SDC_FILE riscv_fan_soc.sdc
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/common/soc_pkg.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/core/rv32i_alu.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/core/rv32i_regfile.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/core/rv32i_imm_gen.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/core/rv32i_decoder.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/core/rv32i_branch_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/core/rv32i_lsu.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/core/rv32i_core.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/memory_ip/imem_ip_wrapper.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/memory_ip/dmem_ip_wrapper.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/memory_ip/config_ip_wrapper.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/pwm_peripheral.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/uart_tx.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/uart_rx.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/uart_peripheral.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/spi_master.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/spi_peripheral.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/soc/mmio_decoder.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/soc/riscv_fan_soc.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/soc/riscv_fan_soc_fpga_top.sv
+set_global_assignment -name QIP_FILE ip/cfg_ip.qip
+set_global_assignment -name QIP_FILE ip/imem_ip.qip

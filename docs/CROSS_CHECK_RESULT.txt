@@ -1,0 +1,11 @@
+CROSS-CHECK PASS
+ - 20 RTL files checked
+ - 27 test/model files checked
+ - 46 unique modules/testbenches found
+ - 18 direct RTL-to-testbench coverage checks passed
+ - 52 named-port instantiations cross-checked
+ - RTL lexical/simulation-only sanity checks passed
+ - Quartus source list/top-level cross-check passed
+ - full ModelSim/Questa regression list cross-check passed
+ - demo firmware reference execution passed
+ - expected demo: PWM 100/30, UART TX 0x48, SPI TX/RX 0xA5/0x3C, UART RX 0x5A

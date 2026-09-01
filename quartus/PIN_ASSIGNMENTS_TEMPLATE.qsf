@@ -1,0 +1,15 @@
+# Copy the correct pin names from your exact FPGA board manual/vendor .qsf.
+# DO NOT guess physical pins, and do not program hardware using Quartus auto pins.
+#
+# Example syntax only:
+# set_location_assignment PIN_<CLOCK_PIN>  -to clk_i
+# set_location_assignment PIN_<RESET_PIN>  -to reset_n_i
+# set_location_assignment PIN_<PWM_PIN>    -to pwm_o
+# set_location_assignment PIN_<UART_TX>    -to uart_tx_o
+# set_location_assignment PIN_<UART_RX>    -to uart_rx_i
+# set_location_assignment PIN_<SPI_CLK>    -to spi_sclk_o
+# set_location_assignment PIN_<SPI_MOSI>   -to spi_mosi_o
+# set_location_assignment PIN_<SPI_MISO>   -to spi_miso_i
+# set_location_assignment PIN_<SPI_CS>     -to spi_cs_n_o
+# set_location_assignment PIN_<HALT_LED>   -to status_halted_o
+# set_location_assignment PIN_<TRAP_LED>   -to status_trap_o

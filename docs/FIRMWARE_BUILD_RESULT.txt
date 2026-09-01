@@ -1,0 +1,1 @@
+wrote soc_demo.hex (28 words) and config_demo.hex
