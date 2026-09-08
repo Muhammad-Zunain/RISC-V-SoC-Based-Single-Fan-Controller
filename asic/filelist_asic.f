@@ -9,6 +9,7 @@ rtl/core/rv32i_lsu.sv
 rtl/core/rv32i_core.sv
 
 rtl/memory_macro/asic_sram_macro_stubs.sv
+
 rtl/memory_asic/asic_imem.sv
 rtl/memory_asic/asic_dmem.sv
 rtl/memory_asic/asic_config_mem.sv
