@@ -1,6 +1,6 @@
 module riscv_fan_soc #(
-  parameter integer IMEM_WORDS = 1024,
-  parameter integer DMEM_WORDS = 1024,
+  parameter integer IMEM_WORDS = 256,
+  parameter integer DMEM_WORDS = 256,
   parameter integer CFG_WORDS  = 256,
   // Simulation-only initialization file parameters. In final ASIC macro mode,
   // SRAM/ROM contents are provided by the macro/boot architecture, not $readmemh.
@@ -202,51 +202,50 @@ module riscv_fan_soc #(
   // the request edge. SRAM wrappers produce ready/data one cycle later; MMIO
   // registers and unmapped accesses are acknowledged one cycle later here.
   always_ff @(posedge clk_i) begin
-  if (rst_i) begin
-    target_q           <= T_NONE;
-    target_valid_q     <= 1'b0;
-    peripheral_rdata_q <= 32'd0;
-  end else begin
+    if (rst_i) begin
+      target_q           <= T_NONE;
+      target_valid_q     <= 1'b0;
+      peripheral_rdata_q <= 32'd0;
+    end else begin
+      // Capture a new CPU transaction.
+      if (!target_valid_q && cpu_req) begin
+        target_valid_q <= 1'b1;
 
-    // Capture a new CPU transaction.
-    if (!target_valid_q && cpu_req) begin
-      target_valid_q <= 1'b1;
+        // Fault has highest priority.
+        if (decode_fault)
+          target_q <= T_FAULT;
+        else if (sel_dmem)
+          target_q <= T_DMEM;
+        else if (sel_cfg)
+          target_q <= T_CFG;
+        else if (sel_pwm)
+          target_q <= T_PWM;
+        else if (sel_uart)
+          target_q <= T_UART;
+        else if (sel_spi)
+          target_q <= T_SPI;
+        else
+          target_q <= T_FAULT;
 
-      // Fault has highest priority.
-      if (decode_fault)
-        target_q <= T_FAULT;
-      else if (sel_dmem)
-        target_q <= T_DMEM;
-      else if (sel_cfg)
-        target_q <= T_CFG;
-      else if (sel_pwm)
-        target_q <= T_PWM;
-      else if (sel_uart)
-        target_q <= T_UART;
-      else if (sel_spi)
-        target_q <= T_SPI;
-      else
-        target_q <= T_FAULT;
+        // MMIO read data is combinational, so capture it
+        // when the request is accepted.
+        if (sel_pwm)
+          peripheral_rdata_q <= pwm_rdata;
+        else if (sel_uart)
+          peripheral_rdata_q <= uart_rdata;
+        else if (sel_spi)
+          peripheral_rdata_q <= spi_rdata;
+        else
+          peripheral_rdata_q <= 32'd0;
+      end
 
-      // MMIO read data is combinational, so capture it
-      // when the request is accepted.
-      if (sel_pwm)
-        peripheral_rdata_q <= pwm_rdata;
-      else if (sel_uart)
-        peripheral_rdata_q <= uart_rdata;
-      else if (sel_spi)
-        peripheral_rdata_q <= spi_rdata;
-      else
-        peripheral_rdata_q <= 32'd0;
-    end
-
-    // Hold the transaction until the selected target replies.
-    else if (target_valid_q && cpu_ready) begin
-      target_valid_q <= 1'b0;
-      target_q       <= T_NONE;
+      // Hold the transaction until the selected target replies.
+      else if (target_valid_q && cpu_ready) begin
+        target_valid_q <= 1'b0;
+        target_q       <= T_NONE;
+      end
     end
   end
-end
   always_comb begin
     cpu_ready = 1'b0;
     cpu_fault = 1'b0;

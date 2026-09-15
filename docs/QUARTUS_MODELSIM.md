@@ -1,3 +1,5 @@
+> **LEGACY FPGA NOTE:** Quartus/M10K is retained only as historical FPGA material. The active final target is the ASIC top `riscv_fan_soc_asic_top` with custom memory macros. ModelSim/Questa regression instructions below remain useful.
+
 # Quartus and ModelSim/Questa Workflow
 
 ## ModelSim / Questa

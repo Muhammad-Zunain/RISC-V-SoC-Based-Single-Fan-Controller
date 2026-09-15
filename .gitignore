@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+
+# Editor / OS
+*.bak
+*~
+.DS_Store
+
+# ModelSim / Questa simulation artifacts
+work/
+transcript
+vsim.wlf
+*.wlf
+
+# Cadence Genus run artifacts (keep folder placeholders only)
+asic/genus/lib/*
+!asic/genus/lib/.gitkeep
+asic/genus/logs/*
+!asic/genus/logs/.gitkeep
+asic/genus/outputs/*
+!asic/genus/outputs/.gitkeep
+asic/genus/reports/*
+!asic/genus/reports/.gitkeep
+asic/genus/work/*
+!asic/genus/work/.gitkeep
+
+# Cadence Innovus run artifacts
+asic/innovus/logs/*
+!asic/innovus/logs/.gitkeep
+asic/innovus/outputs/*
+!asic/innovus/outputs/.gitkeep
+asic/innovus/reports/*
+!asic/innovus/reports/.gitkeep

@@ -1,5 +1,5 @@
 module instruction_sram #(
-  parameter integer WORDS = 1024,
+  parameter integer WORDS = 256,
   parameter INIT_FILE = ""
 ) (
   input  logic [31:0] addr_i,

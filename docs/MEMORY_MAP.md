@@ -13,7 +13,15 @@ All addresses are byte addresses. The CPU is little-endian.
 | `0x4000_1000` | UART 4 KiB MMIO page |
 | `0x4000_2000` | SPI 4 KiB MMIO page |
 
-Memory sizes are parameters. The default SoC configuration is 1024 instruction words, 1024 data words, and 256 configuration words.
+Memory sizes are parameters. The default ASIC-oriented SoC configuration is **256 instruction words, 256 data words, and 256 configuration words**. Each memory is therefore 1 KiB at the logical 32-bit interface.
+
+Default valid byte-address ranges:
+
+| Region | Range | Size |
+|---|---|---:|
+| Instruction memory | `0x0000_0000` - `0x0000_03FF` | 1 KiB |
+| Data memory | `0x1000_0000` - `0x1000_03FF` | 1 KiB |
+| Configuration memory | `0x2000_0000` - `0x2000_03FF` | 1 KiB |
 
 ## PWM
 

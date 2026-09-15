@@ -1,5 +1,5 @@
 module data_sram #(
-  parameter integer WORDS = 1024
+  parameter integer WORDS = 256
 ) (
   input  logic        clk_i,
   input  logic        we_i,

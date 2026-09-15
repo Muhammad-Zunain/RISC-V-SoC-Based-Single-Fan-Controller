@@ -13,7 +13,15 @@ module riscv_fan_soc_asic_top (
   output logic spi_cs_n_o,
 
   output logic status_halted_o,
-  output logic status_trap_o
+  output logic status_trap_o,
+
+  // Debug/bring-up observability ports. These are real primary outputs so
+  // that the CPU debug bus stays reachable and is not deleted by Genus as
+  // unobservable/unloaded logic during syn_generic/syn_map/syn_opt.
+  output logic [31:0] debug_pc_o,
+  output logic [31:0] debug_instr_o,
+  output logic [31:0] debug_trap_cause_o,
+  output logic [3:0]  debug_state_o
 );
 
   // Asynchronous assertion, synchronous deassertion reset synchronizer.
@@ -29,14 +37,9 @@ module riscv_fan_soc_asic_top (
 
   assign rst_i = rst_sync_q[1];
 
-  logic [31:0] debug_pc;
-  logic [31:0] debug_instr;
-  logic [31:0] debug_trap_cause;
-  logic [3:0]  debug_state;
-
   riscv_fan_soc #(
-    .IMEM_WORDS(1024),
-    .DMEM_WORDS(1024),
+    .IMEM_WORDS(256),
+    .DMEM_WORDS(256),
     .CFG_WORDS (256),
 
     // These files are used only by RTL simulation when the behavioral memory
@@ -61,12 +64,12 @@ module riscv_fan_soc_asic_top (
     .spi_miso_i             (spi_miso_i),
     .spi_cs_n_o             (spi_cs_n_o),
 
-    .debug_pc_o             (debug_pc),
-    .debug_instr_o          (debug_instr),
+    .debug_pc_o             (debug_pc_o),
+    .debug_instr_o          (debug_instr_o),
     .debug_halted_o         (status_halted_o),
     .debug_trap_o           (status_trap_o),
-    .debug_trap_cause_o     (debug_trap_cause),
-    .debug_state_o          (debug_state)
+    .debug_trap_cause_o     (debug_trap_cause_o),
+    .debug_state_o          (debug_state_o)
   );
 
 endmodule

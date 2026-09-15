@@ -1,5 +1,5 @@
 module asic_imem #(
-  parameter integer WORDS  = 1024,
+  parameter integer WORDS  = 256,
   parameter integer ADDR_W = $clog2(WORDS),
   parameter INIT_FILE      = "firmware/soc_demo.hex"
 ) (
@@ -10,17 +10,17 @@ module asic_imem #(
 );
 
 `ifdef ASIC_USE_SRAM_MACROS
-  // Final ASIC flow: this abstract macro is replaced/bound to the
-  // technology-specific ROM/SRAM macro for the selected PDK.
+  // Final ASIC path. This is a logical 256x32 read-only memory boundary.
+  // Later, replace/bind asic_imem_macro to the selected custom macro adapter.
   asic_imem_macro u_macro (
     .clk_i   (clk_i),
     .cs_i    (en_i),
-    .addr_i  (addr_i[9:0]),
+    .addr_i  (addr_i),
     .rdata_o (rdata_o)
   );
 `else
-  // RTL/ModelSim reference model. This array is intentionally visible so
-  // directed testbenches can preload instructions hierarchically.
+  // RTL/ModelSim reference model. The array remains visible so directed
+  // testbenches can preload instructions hierarchically.
   logic [31:0] mem [0:WORDS-1];
   integer i;
 
@@ -32,8 +32,8 @@ module asic_imem #(
       $readmemh(INIT_FILE, mem);
   end
 
-  // One-cycle synchronous read.
-  always @(posedge clk_i) begin
+  // One-cycle synchronous read behavior.
+  always_ff @(posedge clk_i) begin
     if (en_i)
       rdata_o <= mem[addr_i];
   end

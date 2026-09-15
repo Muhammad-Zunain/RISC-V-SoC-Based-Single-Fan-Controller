@@ -1,5 +1,5 @@
 module mmio_decoder #(
-  parameter integer DMEM_WORDS = 1024,
+  parameter integer DMEM_WORDS = 256,
   parameter integer CFG_WORDS  = 256
 ) (
   input  logic        valid_i,

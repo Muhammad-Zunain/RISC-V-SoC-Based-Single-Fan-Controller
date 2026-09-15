@@ -1,34 +1,22 @@
 #!/usr/bin/env python3
-"""Offline structural/firmware cross-check for the multicycle RISC-V fan SoC.
+"""ASIC-oriented offline structural and firmware cross-check.
 
-Final architecture:
-- Multicycle RV32I core
-- Quartus M10K IP wrappers for IMEM/DMEM/CFG
-- Simulation Intel RAM IP models
-- PWM / UART / SPI MMIO peripherals
-
-Legacy behavioral SRAM files may remain in the repository for reference,
-but they are NOT part of the final synthesis/simulation architecture.
+This checker intentionally validates the active ASIC-neutral RTL architecture.
+Quartus/Intel RAM files are treated as legacy artifacts and are not required by
+this flow.  The final synthesis path uses ASIC_USE_SRAM_MACROS and the logical
+memory macro boundary defined in rtl/memory_macro/asic_sram_macro_stubs.sv.
 """
 
 from pathlib import Path
 import re
 import sys
 
-
 ROOT = Path(__file__).resolve().parents[1]
-
 errors = []
+notes = []
 
-
-# ==============================================================
-# FINAL ACTIVE SOURCE LISTS
-# ==============================================================
-
-ACTIVE_RTL = [
-
+SIM_RTL = [
     "rtl/common/soc_pkg.sv",
-
     "rtl/core/rv32i_alu.sv",
     "rtl/core/rv32i_regfile.sv",
     "rtl/core/rv32i_imm_gen.sv",
@@ -36,56 +24,49 @@ ACTIVE_RTL = [
     "rtl/core/rv32i_branch_unit.sv",
     "rtl/core/rv32i_lsu.sv",
     "rtl/core/rv32i_core.sv",
-
+    "rtl/memory_asic/asic_imem.sv",
+    "rtl/memory_asic/asic_dmem.sv",
+    "rtl/memory_asic/asic_config_mem.sv",
     "rtl/memory_ip/imem_ip_wrapper.sv",
     "rtl/memory_ip/dmem_ip_wrapper.sv",
     "rtl/memory_ip/config_ip_wrapper.sv",
-
     "rtl/periph/pwm_peripheral.sv",
     "rtl/periph/uart_tx.sv",
     "rtl/periph/uart_rx.sv",
     "rtl/periph/uart_peripheral.sv",
     "rtl/periph/spi_master.sv",
     "rtl/periph/spi_peripheral.sv",
-
     "rtl/soc/mmio_decoder.sv",
     "rtl/soc/riscv_fan_soc.sv",
-    "rtl/soc/riscv_fan_soc_fpga_top.sv",
+    "rtl/soc/riscv_fan_soc_asic_top.sv",
 ]
 
+ASIC_RTL = SIM_RTL[:8] + ["rtl/memory_macro/asic_sram_macro_stubs.sv"] + SIM_RTL[8:]
 
 SIM_SUPPORT = [
-
     "tb/models/spi_slave_model.sv",
     "tb/models/uart_terminal_model.sv",
     "tb/models/virtual_fan_model.sv",
-
-    "tb/models_ip/intel_ram_ip_sim_models.sv",
 ]
 
-
 ACTIVE_TBS = [
-
     "tb/core/tb_alu.sv",
     "tb/core/tb_regfile.sv",
     "tb/core/tb_imm_gen.sv",
     "tb/core/tb_branch_unit.sv",
     "tb/core/tb_lsu.sv",
     "tb/core/tb_decoder.sv",
-
     "tb/core/tb_rv32i_core.sv",
     "tb/core/tb_rv32i_core_multicycle.sv",
     "tb/core/tb_core_faults.sv",
-
+    "tb/core/tb_core_cycle_count.sv",
     "tb/memory/tb_sram_ip_wrappers.sv",
-
     "tb/periph/tb_pwm.sv",
     "tb/periph/tb_uart_tx.sv",
     "tb/periph/tb_uart_rx.sv",
     "tb/periph/tb_uart_peripheral.sv",
     "tb/periph/tb_spi_master.sv",
     "tb/periph/tb_spi_peripheral.sv",
-
     "tb/integration/tb_mmio_decoder.sv",
     "tb/integration/tb_cpu_memory.sv",
     "tb/integration/tb_cpu_pwm.sv",
@@ -95,1782 +76,351 @@ ACTIVE_TBS = [
     "tb/integration/tb_soc.sv",
 ]
 
-
-LEGACY_RTL = [
-
+LEGACY_RTL = {
     "rtl/memory/instruction_sram.sv",
     "rtl/memory/data_sram.sv",
     "rtl/memory/config_sram.sv",
-]
+    "rtl/soc/riscv_fan_soc_fpga_top.sv",
+    "tb/models_ip/intel_ram_ip_sim_models.sv",
+}
 
 
-# ==============================================================
-# HELPERS
-# ==============================================================
+def read(path):
+    p = ROOT / path
+    if not p.exists():
+        errors.append(f"Missing required file: {path}")
+        return ""
+    return p.read_text(errors="replace")
+
+
+def listed(path):
+    text = read(path)
+    return [x.strip() for x in text.splitlines() if x.strip() and not x.lstrip().startswith("#")]
+
 
 def clean_sv(text):
-
-    text = re.sub(
-        r"/\*.*?\*/",
-        "",
-        text,
-        flags=re.S
-    )
-
-    text = re.sub(
-        r"//.*",
-        "",
-        text
-    )
-
-    text = re.sub(
-        r'"(?:\\.|[^"\\])*"',
-        '""',
-        text
-    )
-
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    text = re.sub(r"//.*", "", text)
+    text = re.sub(r'"(?:\\.|[^"\\])*"', '""', text)
     return text
 
 
-def listed_paths(path):
+# 1. Files and source lists.
+for p in SIM_RTL + SIM_SUPPORT + ACTIVE_TBS + ["rtl/memory_macro/asic_sram_macro_stubs.sv"]:
+    read(p)
 
-    if not path.exists():
-        return []
+sim_entries = listed("sim/filelist.f")
+rtl_entries = listed("sim/filelist_rtl.f")
+asic_entries = listed("asic/filelist_asic.f")
 
-    result = []
+for p in SIM_RTL + SIM_SUPPORT:
+    if p not in sim_entries:
+        errors.append(f"sim/filelist.f missing active source: {p}")
+for p in SIM_RTL:
+    if p not in rtl_entries:
+        errors.append(f"sim/filelist_rtl.f missing active RTL: {p}")
+for p in ASIC_RTL:
+    if p not in asic_entries:
+        errors.append(f"asic/filelist_asic.f missing ASIC RTL: {p}")
+for p in LEGACY_RTL:
+    if p in sim_entries or p in rtl_entries or p in asic_entries:
+        errors.append(f"Legacy/FPGA source is active in an ASIC-oriented filelist: {p}")
 
-    for line in path.read_text().splitlines():
-
-        line = line.strip()
-
-        if (
-            line
-            and not line.startswith("#")
-        ):
-            result.append(line)
-
-    return result
-
-
-def require_file(path_string):
-
-    if not (ROOT / path_string).exists():
-
-        errors.append(
-            "Missing required file: "
-            + path_string
-        )
-
-
-# ==============================================================
-# 1. REQUIRED FILES
-# ==============================================================
-
-for path in (
-    ACTIVE_RTL
-    + SIM_SUPPORT
-    + ACTIVE_TBS
-):
-
-    require_file(path)
-
-
-for path in [
-
-    "quartus/ip/imem_ip.qip",
-    "quartus/ip/imem_ip.v",
-
-    "quartus/ip/dmem_ip.qip",
-    "quartus/ip/dmem_ip.v",
-
-    "quartus/ip/cfg_ip.qip",
-    "quartus/ip/cfg_ip.v",
-
-]:
-
-    require_file(path)
-
-
-# ==============================================================
-# 2. MODEL-SIM FILELIST
-# ==============================================================
-
-filelist = ROOT / "sim/filelist.f"
-
-if not filelist.exists():
-
-    errors.append(
-        "sim/filelist.f missing"
-    )
-
-else:
-
-    filelist_entries = listed_paths(
-        filelist
-    )
-
-    for path in ACTIVE_RTL + SIM_SUPPORT:
-
-        if path not in filelist_entries:
-
-            errors.append(
-                "sim/filelist.f missing: "
-                + path
-            )
-
-    # Legacy SRAM must NOT be compiled.
-    for path in LEGACY_RTL:
-
-        if path in filelist_entries:
-
-            errors.append(
-                "sim/filelist.f still contains old SRAM: "
-                + path
-            )
-
-
-# ==============================================================
-# 3. RTL FILELIST
-# ==============================================================
-
-filelist_rtl = ROOT / "sim/filelist_rtl.f"
-
-if not filelist_rtl.exists():
-
-    errors.append(
-        "sim/filelist_rtl.f missing"
-    )
-
-else:
-
-    rtl_entries = listed_paths(
-        filelist_rtl
-    )
-
-    expected = (
-        ACTIVE_RTL
-        +
-        [
-            "tb/models_ip/"
-            "intel_ram_ip_sim_models.sv"
-        ]
-    )
-
-    for path in expected:
-
-        if path not in rtl_entries:
-
-            errors.append(
-                "sim/filelist_rtl.f missing: "
-                + path
-            )
-
-    for path in LEGACY_RTL:
-
-        if path in rtl_entries:
-
-            errors.append(
-                "sim/filelist_rtl.f still contains old SRAM: "
-                + path
-            )
-
-
-# ==============================================================
-# 4. MODULE INVENTORY
-# ==============================================================
-
-scan_files = []
-
-for path in (
-    ACTIVE_RTL
-    + SIM_SUPPORT
-    + ACTIVE_TBS
-):
-
-    file_path = ROOT / path
-
-    if file_path.exists():
-
-        scan_files.append(
-            file_path
-        )
-
-
+# 2. Basic SystemVerilog structural sanity for active sources/TBs.
 modules = {}
-
-
-for file_path in scan_files:
-
-    text = clean_sv(
-        file_path.read_text()
-    )
-
-    relative_path = (
-        file_path.relative_to(ROOT)
-    )
-
-    # ----------------------------------------------------------
-    # Basic begin/end balance
-    # ----------------------------------------------------------
-
-    checks = [
-
-        (
-            r"\bmodule\b",
-            r"\bendmodule\b",
-            "module/endmodule"
-        ),
-
-        (
-            r"\bbegin\b",
-            r"\bend\b",
-            "begin/end"
-        ),
-
-        (
-            r"\bcase(?:x|z)?\b",
-            r"\bendcase\b",
-            "case/endcase"
-        ),
-
-        (
-            r"\bfunction\b",
-            r"\bendfunction\b",
-            "function/endfunction"
-        ),
-
-        (
-            r"\btask\b",
-            r"\bendtask\b",
-            "task/endtask"
-        ),
-
-    ]
-
-    for left, right, label in checks:
-
-        count_left = len(
-            re.findall(
-                left,
-                text
-            )
-        )
-
-        count_right = len(
-            re.findall(
-                right,
-                text
-            )
-        )
-
-        if count_left != count_right:
-
-            errors.append(
-                f"{relative_path}: "
-                f"unbalanced {label} "
-                f"{count_left}/{count_right}"
-            )
-
-    # ----------------------------------------------------------
-    # Bracket balance
-    # ----------------------------------------------------------
-
-    for left, right, label in [
-
-        ("(", ")", "parentheses"),
-        ("[", "]", "brackets"),
-        ("{", "}", "braces"),
-
+for rel in SIM_RTL + SIM_SUPPORT + ACTIVE_TBS + ["rtl/memory_macro/asic_sram_macro_stubs.sv"]:
+    text = clean_sv(read(rel))
+    for a, b, label in [
+        (r"\bmodule\b", r"\bendmodule\b", "module/endmodule"),
+        (r"\bbegin\b", r"\bend\b", "begin/end"),
+        (r"\bcase(?:x|z)?\b", r"\bendcase\b", "case/endcase"),
+        (r"\bfunction\b", r"\bendfunction\b", "function/endfunction"),
+        (r"\btask\b", r"\bendtask\b", "task/endtask"),
     ]:
-
-        if (
-            text.count(left)
-            !=
-            text.count(right)
-        ):
-
-            errors.append(
-                f"{relative_path}: "
-                f"unbalanced {label}"
-            )
-
-    # ----------------------------------------------------------
-    # Find module declarations
-    # ----------------------------------------------------------
-
-    for match in re.finditer(
-        r"\bmodule\s+([A-Za-z_]\w*)",
-        text
-    ):
-
-        module_name = (
-            match.group(1)
-        )
-
-        if module_name in modules:
-
-            errors.append(
-                "Duplicate active module: "
-                + module_name
-            )
-
-        modules[module_name] = (
-            relative_path
-        )
-
-
-# ==============================================================
-# 5. REQUIRED FINAL RTL MODULES
-# ==============================================================
+        ca, cb = len(re.findall(a, text)), len(re.findall(b, text))
+        if ca != cb:
+            errors.append(f"{rel}: unbalanced {label}: {ca}/{cb}")
+    for a, b, label in [("(", ")", "parentheses"), ("[", "]", "brackets"), ("{", "}", "braces")]:
+        if text.count(a) != text.count(b):
+            errors.append(f"{rel}: unbalanced {label}")
+    for m in re.finditer(r"\bmodule\s+([A-Za-z_]\w*)", text):
+        name = m.group(1)
+        if name in modules and rel != "rtl/memory_macro/asic_sram_macro_stubs.sv":
+            errors.append(f"Duplicate active module {name}: {modules[name]} and {rel}")
+        modules[name] = rel
 
 required_modules = {
-
-    "rv32i_alu",
-    "rv32i_regfile",
-    "rv32i_imm_gen",
-    "rv32i_decoder",
-    "rv32i_branch_unit",
-    "rv32i_lsu",
-    "rv32i_core",
-
-    "imem_ip_wrapper",
-    "dmem_ip_wrapper",
-    "config_ip_wrapper",
-
-    "pwm_peripheral",
-
-    "uart_tx",
-    "uart_rx",
-    "uart_peripheral",
-
-    "spi_master",
-    "spi_peripheral",
-
-    "mmio_decoder",
-    "riscv_fan_soc",
-    "riscv_fan_soc_fpga_top",
+    "rv32i_alu", "rv32i_regfile", "rv32i_imm_gen", "rv32i_decoder",
+    "rv32i_branch_unit", "rv32i_lsu", "rv32i_core", "asic_imem",
+    "asic_dmem", "asic_config_mem", "imem_ip_wrapper", "dmem_ip_wrapper",
+    "config_ip_wrapper", "pwm_peripheral", "uart_tx", "uart_rx",
+    "uart_peripheral", "spi_master", "spi_peripheral", "mmio_decoder",
+    "riscv_fan_soc", "riscv_fan_soc_asic_top", "asic_imem_macro",
+    "asic_dmem_macro", "asic_config_macro",
 }
+missing = sorted(required_modules - set(modules))
+if missing:
+    errors.append("Missing required modules: " + ", ".join(missing))
 
+# 3. No accidental standard-cell-memory experiment remains active.
+for rel in ["sim/compile_all.do", "asic/genus/genus_script.tcl"] + SIM_RTL + ["rtl/memory_macro/asic_sram_macro_stubs.sv"]:
+    if "ASIC_STANDARD_CELL_MEM" in read(rel):
+        errors.append(f"Obsolete ASIC_STANDARD_CELL_MEM reference remains in {rel}")
 
-missing_modules = (
-    required_modules
-    -
-    set(modules)
-)
-
-
-if missing_modules:
-
-    errors.append(
-        "Missing final RTL modules: "
-        +
-        ", ".join(
-            sorted(missing_modules)
-        )
-    )
-
-
-# ==============================================================
-# 6. SIMULATION SRAM IP MODULES
-# ==============================================================
-
-for module_name in [
-
-    "imem_ip",
-    "dmem_ip",
-    "cfg_ip",
-
+# 4. Logical memory contract: all defaults 256x32, 8-bit word address.
+soc = read("rtl/soc/riscv_fan_soc.sv")
+asic_top = read("rtl/soc/riscv_fan_soc_asic_top.sv")
+decoder = read("rtl/soc/mmio_decoder.sv")
+for token, owner in [
+    ("parameter integer IMEM_WORDS = 256", "riscv_fan_soc"),
+    ("parameter integer DMEM_WORDS = 256", "riscv_fan_soc"),
+    ("parameter integer CFG_WORDS  = 256", "riscv_fan_soc"),
+    (".IMEM_WORDS(256)", "riscv_fan_soc_asic_top"),
+    (".DMEM_WORDS(256)", "riscv_fan_soc_asic_top"),
+    (".CFG_WORDS (256)", "riscv_fan_soc_asic_top"),
+    ("parameter integer DMEM_WORDS = 256", "mmio_decoder"),
+    ("parameter integer CFG_WORDS  = 256", "mmio_decoder"),
 ]:
+    hay = soc if owner == "riscv_fan_soc" else asic_top if owner == "riscv_fan_soc_asic_top" else decoder
+    if token not in hay:
+        errors.append(f"{owner}: expected logical memory setting not found: {token}")
 
-    if module_name not in modules:
+for rel in [
+    "rtl/memory_asic/asic_imem.sv", "rtl/memory_asic/asic_dmem.sv",
+    "rtl/memory_asic/asic_config_mem.sv", "rtl/memory_ip/imem_ip_wrapper.sv",
+    "rtl/memory_ip/dmem_ip_wrapper.sv", "rtl/memory_ip/config_ip_wrapper.sv",
+]:
+    if "parameter integer WORDS = 256" not in read(rel) and "parameter integer WORDS  = 256" not in read(rel):
+        errors.append(f"{rel}: default WORDS is not 256")
 
-        errors.append(
-            "Simulation RAM model missing: "
-            + module_name
-        )
+stubs = read("rtl/memory_macro/asic_sram_macro_stubs.sv")
+if len(re.findall(r"input\s+logic\s+\[7:0\]\s+addr_i", stubs)) != 3:
+    errors.append("Macro stubs must expose three 8-bit word-address ports")
+for rel in ["rtl/memory_asic/asic_dmem.sv", "rtl/memory_asic/asic_config_mem.sv"]:
+    text = read(rel)
+    for lane in range(4):
+        if f"wmask_i[{lane}]" not in text:
+            errors.append(f"{rel}: missing byte write-mask lane {lane}")
 
+# 5. Wrapper range and latency contract.
+for rel in ["rtl/memory_ip/imem_ip_wrapper.sv", "rtl/memory_ip/dmem_ip_wrapper.sv", "rtl/memory_ip/config_ip_wrapper.sv"]:
+    text = read(rel)
+    if "pending_q <= req_i" not in text:
+        errors.append(f"{rel}: one-cycle request/ready pending register not found")
+if "addr_i[1:0] != 2'b00" not in read("rtl/memory_ip/imem_ip_wrapper.sv"):
+    errors.append("IMEM wrapper must reject non-32-bit-aligned fetch addresses")
+if "addr_i >= MEM_BYTES" not in read("rtl/memory_ip/imem_ip_wrapper.sv"):
+    errors.append("IMEM wrapper range check missing")
+for rel in ["rtl/memory_ip/dmem_ip_wrapper.sv", "rtl/memory_ip/config_ip_wrapper.sv"]:
+    text = read(rel)
+    if "addr_i >= END_ADDR" not in text or "addr_i < BASE_ADDR" not in text:
+        errors.append(f"{rel}: range check missing")
 
-# ==============================================================
-# 7. DIRECT TESTBENCH COVERAGE
-# ==============================================================
+# 6. RV32I architecture checks.
+core = read("rtl/core/rv32i_core.sv")
+dec = read("rtl/core/rv32i_decoder.sv")
+regf = read("rtl/core/rv32i_regfile.sv")
+lsu = read("rtl/core/rv32i_lsu.sv")
+for state in ["ST_FETCH_REQ", "ST_FETCH_WAIT", "ST_DECODE", "ST_EXECUTE", "ST_ALU_WB", "ST_MEM_REQ", "ST_MEM_WAIT", "ST_LOAD_WB", "ST_TRAP"]:
+    if state not in core:
+        errors.append(f"rv32i_core missing FSM state {state}")
+for sig in ["imem_req_o", "imem_ready_i", "dmem_req_o", "dmem_ready_i"]:
+    if sig not in core:
+        errors.append(f"rv32i_core missing handshake signal {sig}")
+if "if (!halted_o && !trap_request)" not in core:
+    errors.append("rv32i_core missing trap-protected architectural writeback")
+if "regs[rd_addr_i] <= rd_data_i" not in regf or "rd_addr_i != 5'd0" not in regf:
+    errors.append("Register file x0 write protection not found")
+if "rs1_addr_i == 5'd0" not in regf or "rs2_addr_i == 5'd0" not in regf:
+    errors.append("Register file x0 read-as-zero behavior not found")
+for opcode in ["7'b0110111", "7'b0010111", "7'b1101111", "7'b1100111", "7'b1100011", "7'b0000011", "7'b0100011", "7'b0010011", "7'b0110011", "7'b0001111", "7'b1110011"]:
+    if opcode not in dec:
+        errors.append(f"Decoder missing RV32I opcode {opcode}")
+for f3 in ["3'b000", "3'b001", "3'b010", "3'b100", "3'b101"]:
+    if f3 not in lsu:
+        errors.append(f"LSU appears incomplete for funct3 {f3}")
 
-test_map = {
+# 7. SoC transaction capture and priority.
+if "if (!target_valid_q && cpu_req)" not in soc:
+    errors.append("SoC missing outstanding-target transaction capture")
+if "else if (target_valid_q && cpu_ready)" not in soc:
+    errors.append("SoC missing outstanding-target completion")
+if "if (decode_fault)" not in soc:
+    errors.append("SoC missing unmapped-MMIO fault priority")
 
-    "rv32i_alu":
-        "tb_alu",
+# 8. Peripheral structural checks.
+uart_rx = read("rtl/periph/uart_rx.sv")
+if "rx_meta_q <= rx_i" not in uart_rx or "rx_sync_q <= rx_meta_q" not in uart_rx:
+    errors.append("UART RX two-flop input synchronizer not found")
+spi = read("rtl/periph/spi_master.sv")
+if "if (!sclk_o)" not in spi or "rx_shift_q <= {rx_shift_q[6:0], miso_i}" not in spi:
+    errors.append("SPI Mode-0 rising-edge sample behavior not found")
+if not re.search(r"mosi_o\s*<=\s*tx_data_i\[7\]", spi):
+    errors.append("SPI MSB-first preload not found")
 
-    "rv32i_regfile":
-        "tb_regfile",
+# 9. ASIC top reset and observable outputs.
+if "@(posedge clk_i or negedge reset_n_i)" not in asic_top:
+    errors.append("ASIC top missing asynchronous reset assertion")
+if "rst_sync_q <= {rst_sync_q[0], 1'b0}" not in asic_top:
+    errors.append("ASIC top missing synchronous reset deassertion shift")
+for conn in [".pwm_o                  (pwm_o)", ".uart_tx_o              (uart_tx_o)", ".spi_sclk_o             (spi_sclk_o)", ".spi_mosi_o             (spi_mosi_o)", ".spi_cs_n_o             (spi_cs_n_o)", ".debug_halted_o         (status_halted_o)", ".debug_trap_o           (status_trap_o)"]:
+    if conn not in asic_top:
+        errors.append(f"ASIC top output connectivity missing: {conn.strip()}")
 
-    "rv32i_imm_gen":
-        "tb_imm_gen",
+# 10. Genus ASIC memory mode.
+genus = read("asic/genus/genus_script.tcl")
+if "read_hdl -sv -define ASIC_USE_SRAM_MACROS $RTL_FILES" not in genus:
+    errors.append("Genus must synthesize with ASIC_USE_SRAM_MACROS")
+if "riscv_fan_soc_asic_top" not in genus:
+    errors.append("Genus top is not riscv_fan_soc_asic_top")
 
-    "rv32i_decoder":
-        "tb_decoder",
+# 11. Compile/run scripts.
+compile_do = read("sim/compile_all.do")
+if "+define+ASIC_USE_SRAM_MACROS" in compile_do:
+    errors.append("Normal ModelSim regression must not enable ASIC macro black boxes")
+if "-f sim/filelist.f" not in compile_do:
+    errors.append("compile_all.do does not use sim/filelist.f")
+for tb in ACTIVE_TBS:
+    if tb not in compile_do:
+        errors.append(f"compile_all.do missing TB: {tb}")
+run_do = read("sim/run_all.do")
+for tb in ACTIVE_TBS:
+    name = Path(tb).stem
+    if f"work.{name}" not in run_do:
+        errors.append(f"run_all.do does not execute {name}")
 
-    "rv32i_branch_unit":
-        "tb_branch_unit",
-
-    "rv32i_lsu":
-        "tb_lsu",
-
-    "rv32i_core":
-        "tb_rv32i_core",
-
-    "imem_ip_wrapper":
-        "tb_sram_ip_wrappers",
-
-    "dmem_ip_wrapper":
-        "tb_sram_ip_wrappers",
-
-    "config_ip_wrapper":
-        "tb_sram_ip_wrappers",
-
-    "pwm_peripheral":
-        "tb_pwm",
-
-    "uart_tx":
-        "tb_uart_tx",
-
-    "uart_rx":
-        "tb_uart_rx",
-
-    "uart_peripheral":
-        "tb_uart_peripheral",
-
-    "spi_master":
-        "tb_spi_master",
-
-    "spi_peripheral":
-        "tb_spi_peripheral",
-
-    "mmio_decoder":
-        "tb_mmio_decoder",
-
-    "riscv_fan_soc":
-        "tb_soc",
-}
-
-
-for rtl_module, tb_module in (
-    test_map.items()
-):
-
-    if (
-        rtl_module in modules
-        and
-        tb_module not in modules
-    ):
-
-        errors.append(
-            rtl_module
-            +
-            " missing testbench "
-            +
-            tb_module
-        )
-
-
-if "tb_rv32i_core_multicycle" not in modules:
-
-    errors.append(
-        "Missing explicit multicycle CPU testbench"
-    )
-
-
-# ==============================================================
-# 8. SYNTHESIZABILITY CHECK
-# ==============================================================
-
-for path in ACTIVE_RTL:
-
-    file_path = ROOT / path
-
-    if not file_path.exists():
-        continue
-
-    text = clean_sv(
-        file_path.read_text()
-    )
-
-    # Timing delays must not appear in RTL.
-    if re.search(
-        r"(^|[^\w])#\s*\d",
-        text
-    ):
-
-        errors.append(
-            path
-            +
-            ": timing delay found in RTL"
-        )
-
-    for bad in [
-
-        "$display",
-        "$fatal",
-        "$finish",
-        "$stop",
-        "force ",
-        "release ",
-
-    ]:
-
-        if bad in text:
-
-            errors.append(
-                path
-                +
-                ": simulation-only construct "
-                +
-                bad
-            )
-
-
-# ==============================================================
-# 9. QUARTUS PROJECT CHECK
-# ==============================================================
-
-qsf = (
-    ROOT
-    /
-    "quartus/riscv_fan_soc.qsf"
-)
-
-
-if not qsf.exists():
-
-    errors.append(
-        "Quartus QSF missing"
-    )
-
+# 12. Firmware/config consistency and tiny reference execution.
+hex_path = ROOT / "firmware/soc_demo.hex"
+cfg_path = ROOT / "firmware/config_demo.hex"
+if not hex_path.exists() or not cfg_path.exists():
+    errors.append("Firmware/config HEX files missing")
 else:
-
-    qsf_text = (
-        qsf.read_text()
-    )
-
-    # ----------------------------------------------------------
-    # Active RTL must be in QSF
-    # ----------------------------------------------------------
-
-    for path in ACTIVE_RTL:
-
-        expected = (
-            "../"
-            +
-            path.replace("\\", "/")
-        )
-
-        if expected not in qsf_text:
-
-            errors.append(
-                "Quartus QSF missing: "
-                + expected
-            )
-
-    # ----------------------------------------------------------
-    # Old behavioral SRAM must NOT be in QSF
-    # ----------------------------------------------------------
-
-    for path in LEGACY_RTL:
-
-        expected = (
-            "../"
-            +
-            path
-        )
-
-        if expected in qsf_text:
-
-            errors.append(
-                "Quartus QSF contains legacy SRAM: "
-                + expected
-            )
-
-    # ----------------------------------------------------------
-    # Generated IP QIPs
-    # ----------------------------------------------------------
-
-    for qip in [
-
-        "ip/imem_ip.qip",
-        "ip/dmem_ip.qip",
-        "ip/cfg_ip.qip",
-
-    ]:
-
-        if qip not in qsf_text:
-
-            errors.append(
-                "Quartus QSF missing QIP: "
-                + qip
-            )
-
-    # ----------------------------------------------------------
-    # Top level
-    # ----------------------------------------------------------
-
-    if (
-        "TOP_LEVEL_ENTITY "
-        "riscv_fan_soc_fpga_top"
-        not in qsf_text
-    ):
-
-        errors.append(
-            "Wrong Quartus top-level entity"
-        )
-
-
-# ==============================================================
-# 10. GENERATED SRAM IP SETTINGS
-# ==============================================================
-
-IP_EXPECTATIONS = {
-
-    "imem_ip": {
-
-        'numwords_a = 1024':
-            "depth 1024",
-
-        'width_a = 32':
-            "width 32",
-
-        'widthad_a = 10':
-            "address width 10",
-
-        'outdata_reg_a = "UNREGISTERED"':
-            "q unregistered",
-
-        'ram_block_type = "M10K"':
-            "M10K",
-
-        'init_file = "soc_demo.mif"':
-            "soc_demo.mif",
-    },
-
-    "dmem_ip": {
-
-        'numwords_a = 1024':
-            "depth 1024",
-
-        'width_a = 32':
-            "width 32",
-
-        'widthad_a = 10':
-            "address width 10",
-
-        'outdata_reg_a = "UNREGISTERED"':
-            "q unregistered",
-
-        'ram_block_type = "M10K"':
-            "M10K",
-
-        'byte_size = 8':
-            "8-bit byte enable",
-    },
-
-    "cfg_ip": {
-
-        'numwords_a = 256':
-            "depth 256",
-
-        'width_a = 32':
-            "width 32",
-
-        'widthad_a = 8':
-            "address width 8",
-
-        'outdata_reg_a = "UNREGISTERED"':
-            "q unregistered",
-
-        'ram_block_type = "M10K"':
-            "M10K",
-
-        'byte_size = 8':
-            "8-bit byte enable",
-
-        'init_file = "config_demo.mif"':
-            "config_demo.mif",
-    },
-}
-
-
-for ip_name, checks in (
-    IP_EXPECTATIONS.items()
-):
-
-    qip_path = (
-        ROOT
-        /
-        f"quartus/ip/{ip_name}.qip"
-    )
-
-    verilog_path = (
-        ROOT
-        /
-        f"quartus/ip/{ip_name}.v"
-    )
-
-    if not qip_path.exists():
-        continue
-
-    if not verilog_path.exists():
-        continue
-
-    qip_text = (
-        qip_path.read_text()
-    )
-
-    if (
-        f"{ip_name}.v"
-        not in qip_text
-    ):
-
-        errors.append(
-            f"{ip_name}.qip does not "
-            f"reference {ip_name}.v"
-        )
-
-    verilog_text = (
-        verilog_path.read_text()
-    )
-
-    for token, description in (
-        checks.items()
-    ):
-
-        if token not in verilog_text:
-
-            errors.append(
-                f"{ip_name} incorrect setting: "
-                f"{description}"
-            )
-
-
-# ==============================================================
-# 11. COMPILE_ALL.DO
-# ==============================================================
-
-compile_script = (
-    ROOT
-    /
-    "sim/compile_all.do"
-)
-
-
-if not compile_script.exists():
-
-    errors.append(
-        "sim/compile_all.do missing"
-    )
-
-else:
-
-    compile_text = (
-        compile_script.read_text()
-    )
-
-    if (
-        "-f sim/filelist.f"
-        not in compile_text
-    ):
-
-        errors.append(
-            "compile_all.do does not use "
-            "sim/filelist.f"
-        )
-
-    for tb_path in ACTIVE_TBS:
-
-        if tb_path not in compile_text:
-
-            errors.append(
-                "compile_all.do missing TB: "
-                + tb_path
-            )
-
-    # Old SRAM TBs must not compile.
-    for old_tb in [
-
-        "tb/memory/tb_instruction_sram.sv",
-        "tb/memory/tb_data_sram.sv",
-        "tb/memory/tb_config_sram.sv",
-
-    ]:
-
-        if old_tb in compile_text:
-
-            errors.append(
-                "compile_all.do still compiles "
-                "legacy testbench: "
-                +
-                old_tb
-            )
-
-
-# ==============================================================
-# 12. RUN_ALL.DO
-# ==============================================================
-
-run_script = (
-    ROOT
-    /
-    "sim/run_all.do"
-)
-
-
-if not run_script.exists():
-
-    errors.append(
-        "sim/run_all.do missing"
-    )
-
-else:
-
-    run_text = (
-        run_script.read_text()
-    )
-
-    for tb_path in ACTIVE_TBS:
-
-        tb_name = (
-            Path(tb_path).stem
-        )
-
-        expected = (
-            "work."
-            +
-            tb_name
-        )
-
-        if expected not in run_text:
-
-            errors.append(
-                "run_all.do does not run "
-                +
-                tb_name
-            )
-
-
-# ==============================================================
-# 13. MULTICYCLE CORE STRUCTURE
-# ==============================================================
-
-core_path = (
-    ROOT
-    /
-    "rtl/core/rv32i_core.sv"
-)
-
-
-if core_path.exists():
-
-    core_text = (
-        core_path.read_text()
-    )
-
-    # ----------------------------------------------------------
-    # Required FSM states
-    # ----------------------------------------------------------
-
-    for state_name in [
-
-        "ST_FETCH_REQ",
-        "ST_FETCH_WAIT",
-        "ST_DECODE",
-        "ST_EXECUTE",
-        "ST_ALU_WB",
-        "ST_MEM_REQ",
-        "ST_MEM_WAIT",
-        "ST_LOAD_WB",
-        "ST_TRAP",
-
-    ]:
-
-        if state_name not in core_text:
-
-            errors.append(
-                "rv32i_core missing state "
-                +
-                state_name
-            )
-
-    # ----------------------------------------------------------
-    # Req/ready interface
-    # ----------------------------------------------------------
-
-    for signal_name in [
-
-        "imem_req_o",
-        "imem_ready_i",
-        "dmem_req_o",
-        "dmem_ready_i",
-
-    ]:
-
-        if signal_name not in core_text:
-
-            errors.append(
-                "rv32i_core missing handshake: "
-                +
-                signal_name
-            )
-
-    # ----------------------------------------------------------
-    # Trap-protected writeback
-    # ----------------------------------------------------------
-
-    if (
-        "if (!halted_o && !trap_request)"
-        not in core_text
-    ):
-
-        errors.append(
-            "rv32i_core missing "
-            "trap-protected writeback"
-        )
-
-
-# ==============================================================
-# 14. SOC TRANSACTION HANDSHAKE
-# ==============================================================
-
-soc_path = (
-    ROOT
-    /
-    "rtl/soc/riscv_fan_soc.sv"
-)
-
-
-if soc_path.exists():
-
-    soc_text = (
-        soc_path.read_text()
-    )
-
-    if (
-        "if (!target_valid_q && cpu_req)"
-        not in soc_text
-    ):
-
-        errors.append(
-            "SoC missing transaction capture logic"
-        )
-
-    if (
-        "target_valid_q && cpu_ready"
-        not in soc_text
-    ):
-
-        errors.append(
-            "SoC missing transaction completion logic"
-        )
-
-    if (
-        "if (decode_fault)"
-        not in soc_text
-    ):
-
-        errors.append(
-            "SoC missing MMIO fault priority"
-        )
-
-
-# ==============================================================
-# 15. FIRMWARE REFERENCE CHECK
-# ==============================================================
-
-hex_path = (
-    ROOT
-    /
-    "firmware/soc_demo.hex"
-)
-
-cfg_path = (
-    ROOT
-    /
-    "firmware/config_demo.hex"
-)
-
-
-if (
-    not hex_path.exists()
-    or
-    not cfg_path.exists()
-):
-
-    errors.append(
-        "Firmware/config HEX files missing"
-    )
-
-else:
-
-    words = [
-
-        int(value, 16)
-
-        for value
-        in hex_path.read_text().split()
-    ]
-
-    cfg_words = [
-
-        int(value, 16)
-
-        for value
-        in cfg_path.read_text().split()
-    ]
-
-    # ----------------------------------------------------------
-    # Configuration values
-    # ----------------------------------------------------------
-
-    if cfg_words[:4] != [
-
-        100,
-        30,
-        0x48,
-        0xA5,
-
-    ]:
-
-        errors.append(
-            "Configuration data incorrect: "
-            +
-            str(cfg_words[:4])
-        )
-
-    # ----------------------------------------------------------
-    # Demo program currently expected to have 28 words
-    # ----------------------------------------------------------
-
+    words = [int(x, 16) for x in hex_path.read_text().split()]
+    cfg_words = [int(x, 16) for x in cfg_path.read_text().split()]
     if len(words) != 28:
-
-        errors.append(
-            "soc_demo.hex expected "
-            "28 words, got "
-            +
-            str(len(words))
-        )
-
-    # ----------------------------------------------------------
-    # Quartus HEX copies must match firmware
-    # ----------------------------------------------------------
-
-    quartus_soc_hex = (
-        ROOT
-        /
-        "quartus/soc_demo.hex"
-    )
-
-    quartus_cfg_hex = (
-        ROOT
-        /
-        "quartus/config_demo.hex"
-    )
-
-    if (
-        not quartus_soc_hex.exists()
-        or
-        quartus_soc_hex.read_text()
-        !=
-        hex_path.read_text()
-    ):
-
-        errors.append(
-            "quartus/soc_demo.hex "
-            "missing or stale"
-        )
-
-    if (
-        not quartus_cfg_hex.exists()
-        or
-        quartus_cfg_hex.read_text()
-        !=
-        cfg_path.read_text()
-    ):
-
-        errors.append(
-            "quartus/config_demo.hex "
-            "missing or stale"
-        )
-
-    # ==========================================================
-    # Tiny firmware reference executor
-    # ==========================================================
+        errors.append(f"soc_demo.hex expected 28 words, got {len(words)}")
+    if cfg_words[:4] != [100, 30, 0x48, 0xA5]:
+        errors.append(f"config_demo.hex first four words are wrong: {cfg_words[:4]}")
+    if len(words) > 256:
+        errors.append("Firmware no longer fits 256-word IMEM")
+    if len(cfg_words) > 256:
+        errors.append("Configuration image no longer fits 256-word CFG memory")
 
     regs = [0] * 32
-
     pc = 0
-
-    cfg = {
-
-        0x20000000 + (4 * index):
-            value
-
-        for index, value
-        in enumerate(cfg_words)
-    }
-
+    cfg = {0x20000000 + 4*i: v for i, v in enumerate(cfg_words)}
     dmem = {}
+    pwm = {}
+    uart_tx = []
+    spi_tx = None
+    reached_loop = False
 
-    pwm_registers = {}
+    def sext(v, bits):
+        return v - (1 << bits) if v & (1 << (bits - 1)) else v
 
-    uart_tx_values = []
-
-    spi_tx_value = None
-
-    steps = 0
-
-    reached_final_loop = False
-
-    firmware_error = False
-
-
-    def sext(value, bits):
-
-        sign = (
-            1
-            <<
-            (bits - 1)
-        )
-
-        if value & sign:
-
-            return (
-                value
-                -
-                (1 << bits)
-            )
-
-        return value
-
-
-    def memory_load(address):
-
-        # Configuration SRAM
-        if address in cfg:
-
-            return cfg[address]
-
-        # Data SRAM
-        if (
-            0x10000000
-            <=
-            address
-            <
-            0x10001000
-        ):
-
-            return dmem.get(
-                address,
-                0
-            )
-
-        # SPI STATUS: done
-        if address == 0x40002008:
-
-            return 0x2
-
-        # SPI RXDATA
-        if address == 0x4000200C:
-
-            return 0x3C
-
-        # UART STATUS: RX valid
-        if address == 0x40001008:
-
-            return 0x2
-
-        # UART RXDATA
-        if address == 0x40001004:
-
-            return 0x5A
-
+    def load(addr):
+        if addr in cfg: return cfg[addr]
+        if 0x10000000 <= addr < 0x10000400: return dmem.get(addr, 0)
+        if addr == 0x40002008: return 0x2
+        if addr == 0x4000200C: return 0x3C
+        if addr == 0x40001008: return 0x2
+        if addr == 0x40001004: return 0x5A
         return 0
 
-
-    def memory_store(address, value):
-
+    def store(addr, value):
+        nonlocal_dummy = None
         value &= 0xFFFFFFFF
+        if 0x10000000 <= addr < 0x10000400: dmem[addr] = value
+        elif 0x40000000 <= addr <= 0x40000008: pwm[addr] = value
+        elif addr == 0x40001000: uart_tx.append(value & 0xFF)
+        elif addr == 0x40002000: return value & 0xFF
+        return nonlocal_dummy
 
-        # Data SRAM
-        if (
-            0x10000000
-            <=
-            address
-            <
-            0x10001000
-        ):
-
-            dmem[address] = value
-
-        # PWM
-        elif (
-            0x40000000
-            <=
-            address
-            <=
-            0x40000008
-        ):
-
-            pwm_registers[address] = value
-
-        # UART TXDATA
-        elif address == 0x40001000:
-
-            uart_tx_values.append(
-                value & 0xFF
-            )
-
-        # SPI TXDATA
-        elif address == 0x40002000:
-
-            return (
-                value & 0xFF
-            )
-
-        return None
-
-
-    while (
-        steps < 200
-        and
-        not firmware_error
-    ):
-
-        # ------------------------------------------------------
-        # PC validity
-        # ------------------------------------------------------
-
-        if (
-            pc % 4
-            or
-            pc // 4 >= len(words)
-        ):
-
-            errors.append(
-                f"Firmware PC out of range "
-                f"0x{pc:08X}"
-            )
-
-            firmware_error = True
-
+    for _ in range(200):
+        if pc & 3 or pc // 4 >= len(words):
+            errors.append(f"Firmware PC out of range/alignment: 0x{pc:08X}")
             break
-
-        instruction = (
-            words[pc // 4]
-        )
-
-        opcode = (
-            instruction
-            &
-            0x7F
-        )
-
-        rd = (
-            instruction >> 7
-        ) & 31
-
-        funct3 = (
-            instruction >> 12
-        ) & 7
-
-        rs1 = (
-            instruction >> 15
-        ) & 31
-
-        rs2 = (
-            instruction >> 20
-        ) & 31
-
-        next_pc = (
-            pc + 4
-        ) & 0xFFFFFFFF
-
-        write_value = None
-
-        # ------------------------------------------------------
-        # LUI
-        # ------------------------------------------------------
-
-        if opcode == 0x37:
-
-            write_value = (
-                instruction
-                &
-                0xFFFFF000
-            )
-
-        # ------------------------------------------------------
-        # LW
-        # ------------------------------------------------------
-
-        elif (
-            opcode == 0x03
-            and
-            funct3 == 2
-        ):
-
-            immediate = sext(
-                (instruction >> 20)
-                &
-                0xFFF,
-                12
-            )
-
-            address = (
-                regs[rs1]
-                +
-                immediate
-            ) & 0xFFFFFFFF
-
-            write_value = (
-                memory_load(address)
-            )
-
-        # ------------------------------------------------------
-        # SW
-        # ------------------------------------------------------
-
-        elif (
-            opcode == 0x23
-            and
-            funct3 == 2
-        ):
-
-            immediate = sext(
-
-                (
-                    (instruction >> 25)
-                    << 5
-                )
-                |
-                (
-                    (instruction >> 7)
-                    &
-                    31
-                ),
-
-                12
-            )
-
-            address = (
-                regs[rs1]
-                +
-                immediate
-            ) & 0xFFFFFFFF
-
-            result = memory_store(
-                address,
-                regs[rs2]
-            )
-
-            if result is not None:
-
-                spi_tx_value = result
-
-        # ------------------------------------------------------
-        # ADDI / ANDI
-        # ------------------------------------------------------
-
-        elif opcode == 0x13:
-
-            immediate = sext(
-                (instruction >> 20)
-                &
-                0xFFF,
-                12
-            )
-
-            if funct3 == 0:
-
-                write_value = (
-                    regs[rs1]
-                    +
-                    immediate
-                ) & 0xFFFFFFFF
-
-            elif funct3 == 7:
-
-                write_value = (
-                    regs[rs1]
-                    &
-                    (
-                        immediate
-                        &
-                        0xFFFFFFFF
-                    )
-                )
-
-            else:
-
-                errors.append(
-                    "Unexpected firmware "
-                    f"OP-IMM funct3={funct3}"
-                )
-
-                firmware_error = True
-
+        insn = words[pc // 4]
+        opcode = insn & 0x7F
+        rd = (insn >> 7) & 31
+        f3 = (insn >> 12) & 7
+        rs1 = (insn >> 15) & 31
+        rs2 = (insn >> 20) & 31
+        npc = (pc + 4) & 0xFFFFFFFF
+        wr = None
+        if opcode == 0x37:  # LUI
+            wr = insn & 0xFFFFF000
+        elif opcode == 0x03 and f3 == 2:  # LW
+            imm = sext((insn >> 20) & 0xFFF, 12)
+            wr = load((regs[rs1] + imm) & 0xFFFFFFFF)
+        elif opcode == 0x23 and f3 == 2:  # SW
+            imm = sext(((insn >> 25) << 5) | ((insn >> 7) & 31), 12)
+            ret = store((regs[rs1] + imm) & 0xFFFFFFFF, regs[rs2])
+            if ret is not None: spi_tx = ret
+        elif opcode == 0x13 and f3 in (0, 7):
+            imm = sext((insn >> 20) & 0xFFF, 12)
+            wr = ((regs[rs1] + imm) if f3 == 0 else (regs[rs1] & (imm & 0xFFFFFFFF))) & 0xFFFFFFFF
+        elif opcode == 0x63 and f3 == 0:  # BEQ
+            imm = (((insn >> 31) & 1) << 12) | (((insn >> 7) & 1) << 11) | (((insn >> 25) & 0x3F) << 5) | (((insn >> 8) & 0xF) << 1)
+            imm = sext(imm, 13)
+            if regs[rs1] == regs[rs2]: npc = (pc + imm) & 0xFFFFFFFF
+        elif opcode == 0x6F:  # JAL
+            imm = (((insn >> 31) & 1) << 20) | (((insn >> 12) & 0xFF) << 12) | (((insn >> 20) & 1) << 11) | (((insn >> 21) & 0x3FF) << 1)
+            imm = sext(imm, 21)
+            wr = (pc + 4) & 0xFFFFFFFF
+            npc = (pc + imm) & 0xFFFFFFFF
+            if rd == 0 and imm == 0:
+                reached_loop = True
                 break
-
-        # ------------------------------------------------------
-        # BEQ
-        # ------------------------------------------------------
-
-        elif (
-            opcode == 0x63
-            and
-            funct3 == 0
-        ):
-
-            immediate = (
-
-                (
-                    (
-                        instruction >> 31
-                    )
-                    &
-                    1
-                )
-                << 12
-
-            ) | (
-
-                (
-                    (
-                        instruction >> 7
-                    )
-                    &
-                    1
-                )
-                << 11
-
-            ) | (
-
-                (
-                    (
-                        instruction >> 25
-                    )
-                    &
-                    0x3F
-                )
-                << 5
-
-            ) | (
-
-                (
-                    (
-                        instruction >> 8
-                    )
-                    &
-                    0xF
-                )
-                << 1
-
-            )
-
-            immediate = sext(
-                immediate,
-                13
-            )
-
-            if regs[rs1] == regs[rs2]:
-
-                next_pc = (
-                    pc
-                    +
-                    immediate
-                ) & 0xFFFFFFFF
-
-        # ------------------------------------------------------
-        # JAL
-        # ------------------------------------------------------
-
-        elif opcode == 0x6F:
-
-            immediate = (
-
-                (
-                    (
-                        instruction >> 31
-                    )
-                    &
-                    1
-                )
-                << 20
-
-            ) | (
-
-                (
-                    (
-                        instruction >> 12
-                    )
-                    &
-                    0xFF
-                )
-                << 12
-
-            ) | (
-
-                (
-                    (
-                        instruction >> 20
-                    )
-                    &
-                    1
-                )
-                << 11
-
-            ) | (
-
-                (
-                    (
-                        instruction >> 21
-                    )
-                    &
-                    0x3FF
-                )
-                << 1
-
-            )
-
-            immediate = sext(
-                immediate,
-                21
-            )
-
-            write_value = (
-                pc + 4
-            ) & 0xFFFFFFFF
-
-            next_pc = (
-                pc
-                +
-                immediate
-            ) & 0xFFFFFFFF
-
-            # Final infinite loop:
-            #
-            #     JAL x0,0
-            #
-            if (
-                rd == 0
-                and
-                immediate == 0
-            ):
-
-                reached_final_loop = True
-
-                break
-
         else:
-
-            errors.append(
-                f"Unexpected firmware opcode "
-                f"0x{opcode:02X} "
-                f"at PC=0x{pc:X}"
-            )
-
-            firmware_error = True
-
+            errors.append(f"Unexpected demo firmware instruction 0x{insn:08X} at PC 0x{pc:08X}")
             break
-
-        # ------------------------------------------------------
-        # Register writeback
-        # ------------------------------------------------------
-
-        if (
-            write_value is not None
-            and
-            rd != 0
-        ):
-
-            regs[rd] = (
-                write_value
-                &
-                0xFFFFFFFF
-            )
-
+        if wr is not None and rd != 0: regs[rd] = wr & 0xFFFFFFFF
         regs[0] = 0
+        pc = npc
 
-        pc = next_pc
+    if not reached_loop: errors.append("Demo firmware did not reach final JAL x0,0 loop")
+    if [pwm.get(0x40000000), pwm.get(0x40000004), pwm.get(0x40000008)] != [1, 100, 30]:
+        errors.append(f"Firmware PWM programming mismatch: {pwm}")
+    if uart_tx != [0x48]: errors.append(f"Firmware UART TX mismatch: {uart_tx}")
+    if spi_tx != 0xA5: errors.append(f"Firmware SPI TX mismatch: {spi_tx}")
+    if dmem.get(0x10000000) != 0x3C or dmem.get(0x10000004) != 0x5A:
+        errors.append(f"Firmware DMEM result mismatch: {dmem}")
 
-        steps += 1
-
-    # ==========================================================
-    # Firmware final expected behavior
-    # ==========================================================
-
-    if not reached_final_loop:
-
-        errors.append(
-            "Firmware did not reach "
-            "final JAL x0,0"
-        )
-
-    if (
-
-        pwm_registers.get(
-            0x40000000
-        ) != 1
-
-        or
-
-        pwm_registers.get(
-            0x40000004
-        ) != 100
-
-        or
-
-        pwm_registers.get(
-            0x40000008
-        ) != 30
-
-    ):
-
-        errors.append(
-            "Firmware PWM mismatch: "
-            +
-            str(pwm_registers)
-        )
-
-    if uart_tx_values != [0x48]:
-
-        errors.append(
-            "Firmware UART TX mismatch: "
-            +
-            str(uart_tx_values)
-        )
-
-    if spi_tx_value != 0xA5:
-
-        errors.append(
-            "Firmware SPI TX mismatch: "
-            +
-            str(spi_tx_value)
-        )
-
-    if (
-
-        dmem.get(
-            0x10000000
-        ) != 0x3C
-
-        or
-
-        dmem.get(
-            0x10000004
-        ) != 0x5A
-
-    ):
-
-        errors.append(
-            "Firmware DMEM result mismatch: "
-            +
-            str(dmem)
-        )
-
-
-# ==============================================================
-# FINAL RESULT
-# ==============================================================
+# 13. Documentation consistency for active architecture.
+map_doc = read("docs/MEMORY_MAP.md")
+contract = read("docs/ASIC_MEMORY_MACRO_CONTRACT.md")
+for token in ["256 instruction words", "256 data words", "256 configuration words", "0x0000_03FF", "0x1000_03FF", "0x2000_03FF"]:
+    if token not in map_doc:
+        errors.append(f"MEMORY_MAP.md missing expected active-architecture text: {token}")
+for token in ["256 x 32", "8 bits", "one-cycle synchronous read", "four byte write enables", "256 x 16"]:
+    if token not in contract:
+        errors.append(f"ASIC_MEMORY_MACRO_CONTRACT.md missing: {token}")
 
 if errors:
-
-    print("")
+    print("\n========================================")
+    print("ASIC RTL CROSS-CHECK FAILED")
     print("========================================")
-    print("CROSS-CHECK FAILED")
-    print("========================================")
-
-    for error in errors:
-
-        print(
-            " -",
-            error
-        )
-
-    print("")
-
+    for e in errors: print(" -", e)
+    print()
     sys.exit(1)
 
-
-print("")
+print("\n========================================")
+print("ASIC RTL CROSS-CHECK PASS")
 print("========================================")
-print("CROSS-CHECK PASS")
-print("========================================")
-
-print(
-    f" - {len(ACTIVE_RTL)} "
-    "active synthesizable RTL files checked"
-)
-
-print(
-    f" - {len(ACTIVE_TBS)} "
-    "active testbenches checked"
-)
-
-print(
-    f" - {len(modules)} "
-    "active modules/models/testbenches found"
-)
-
-print(
-    f" - {len(test_map)} "
-    "RTL-to-testbench checks passed"
-)
-
-print(
-    " - Multicycle RV32I FSM checked"
-)
-
-print(
-    " - IMEM/DMEM req-ready handshake checked"
-)
-
-print(
-    " - Quartus M10K IP settings checked"
-)
-
-print(
-    " - Quartus final source list checked"
-)
-
-print(
-    " - ModelSim compile/regression lists checked"
-)
-
-print(
-    " - Demo firmware reference execution passed"
-)
-
-print(
-    " - Expected demo:"
-)
-
-print(
-    "     PWM = period 100, duty 30"
-)
-
-print(
-    "     Virtual fan = 30%"
-)
-
-print(
-    "     UART TX = 0x48 ('H')"
-)
-
-print(
-    "     UART RX = 0x5A"
-)
-
-print(
-    "     SPI TX = 0xA5"
-)
-
-print(
-    "     SPI RX = 0x3C"
-)
-
-print("")
+print(f" - {len(SIM_RTL)} active RTL files checked")
+print(f" - {len(ACTIVE_TBS)} active testbenches checked")
+print(" - Simulation and ASIC filelists are separated correctly")
+print(" - Logical IMEM/DMEM/CFG contract = 256 x 32")
+print(" - Macro word address = 8 bits")
+print(" - DMEM/CFG preserve four byte-write lanes")
+print(" - Multicycle CPU FSM/handshakes checked")
+print(" - Trap-protected writeback checked")
+print(" - UART RX two-flop synchronizer checked")
+print(" - SPI Mode-0/MSB-first structure checked")
+print(" - ASIC top reset synchronizer/output connectivity checked")
+print(" - Genus macro synthesis mode checked")
+print(" - ModelSim compile/run lists checked, including cycle-count TB")
+print(" - Firmware fits 256-word IMEM and reference execution passes")
+print(" - Expected demo: PWM 100/30, UART H/0x5A, SPI 0xA5/0x3C")
+print("\nNOTE: This is an offline structural/reference check, not a replacement for ModelSim, Genus, or LEC.\n")

@@ -3,9 +3,9 @@ RISC-V FAN SOC - FIRST CADENCE GENUS RUN
 
 1. Copy the complete project to the Linux/Cadence machine.
 
-2. Edit ONLY this file first:
+2. Edit ONLY the "TECHNOLOGY / PDK SETUP" block in this file first:
 
-   asic/genus/setup_pdk.tcl
+   asic/genus/genus_script.tcl
 
    Set:
 
@@ -20,13 +20,13 @@ RISC-V FAN SOC - FIRST CADENCE GENUS RUN
 
 4. From the PROJECT ROOT run:
 
-   genus -files asic/genus/run_genus.tcl
+   genus -f asic/genus/genus_script.tcl
 
 5. Important synthesis top:
 
    riscv_fan_soc_asic_top
 
-6. Important preprocessor define used automatically by run_genus.tcl:
+6. Important preprocessor define used automatically by genus_script.tcl:
 
    ASIC_USE_SRAM_MACROS
 

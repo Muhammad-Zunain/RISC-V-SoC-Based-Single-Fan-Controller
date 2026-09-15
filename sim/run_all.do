@@ -122,6 +122,17 @@ run -all
 quit -sim
 
 
+echo ""
+echo "--------------------------------------------------"
+echo " TEST: RV32I Core Cycle Count"
+echo " R-type=5 / Load=7 / Store=6 / JAL/JALR=4"
+echo "--------------------------------------------------"
+
+vsim -voptargs=+acc work.tb_core_cycle_count
+run -all
+quit -sim
+
+
 # ==============================================================
 # SRAM IP TEST
 # ==============================================================

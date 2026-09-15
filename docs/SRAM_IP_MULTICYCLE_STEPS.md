@@ -1,3 +1,5 @@
+> **LEGACY FPGA NOTE:** This document describes the older Quartus/M10K implementation. It is not part of the active ASIC synthesis path. The active ASIC memory contract is `docs/ASIC_MEMORY_MACRO_CONTRACT.md`.
+
 # Quartus 18.1 SRAM IP + Multicycle RV32I Conversion
 
 This project version changes only the blocks that must change for synchronous FPGA RAM:

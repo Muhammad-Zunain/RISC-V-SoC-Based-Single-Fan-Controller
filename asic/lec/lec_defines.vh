@@ -1,0 +1,1 @@
+`define ASIC_USE_SRAM_MACROS

@@ -1,5 +1,5 @@
 module imem_ip_wrapper #(
-  parameter integer WORDS = 1024,
+  parameter integer WORDS = 256,
   parameter INIT_FILE     = "firmware/soc_demo.hex"
 ) (
   input  logic        clk_i,

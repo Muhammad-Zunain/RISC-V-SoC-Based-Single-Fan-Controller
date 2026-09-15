@@ -9,9 +9,9 @@ module tb_sram_ip_wrappers;
   always #5 clk=~clk;
   always @(posedge clk) cycle_count <= cycle_count + 1;
 
-  imem_ip_wrapper #(.WORDS(1024)) u_i(
+  imem_ip_wrapper #(.WORDS(256)) u_i(
     .clk_i(clk),.rst_i(rst),.req_i(ireq),.addr_i(ia),.ready_o(iready),.rdata_o(ir),.fault_o(ifault));
-  dmem_ip_wrapper #(.WORDS(1024)) u_d(
+  dmem_ip_wrapper #(.WORDS(256)) u_d(
     .clk_i(clk),.rst_i(rst),.req_i(dreq),.write_i(dwe),.addr_i(da),.wdata_i(dwd),.wstrb_i(dstrb),.ready_o(dready),.rdata_o(drd),.fault_o(dfault));
   config_ip_wrapper #(.WORDS(256)) u_c(
     .clk_i(clk),.rst_i(rst),.req_i(creq),.write_i(cwe),.addr_i(ca),.wdata_i(cwd),.wstrb_i(cstrb),.ready_o(cready),.rdata_o(crd),.fault_o(cfault));

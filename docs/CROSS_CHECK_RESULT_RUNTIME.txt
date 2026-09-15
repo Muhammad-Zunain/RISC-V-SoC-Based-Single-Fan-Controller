@@ -1,11 +1,14 @@
+
+========================================
 ASIC RTL CROSS-CHECK PASS
+========================================
  - 23 active RTL files checked
  - 24 active testbenches checked
- - Simulation and ASIC filelists separated correctly
+ - Simulation and ASIC filelists are separated correctly
  - Logical IMEM/DMEM/CFG contract = 256 x 32
  - Macro word address = 8 bits
  - DMEM/CFG preserve four byte-write lanes
- - Multicycle RV32I FSM/handshakes checked
+ - Multicycle CPU FSM/handshakes checked
  - Trap-protected writeback checked
  - UART RX two-flop synchronizer checked
  - SPI Mode-0/MSB-first structure checked
@@ -13,6 +16,7 @@ ASIC RTL CROSS-CHECK PASS
  - Genus macro synthesis mode checked
  - ModelSim compile/run lists checked, including cycle-count TB
  - Firmware fits 256-word IMEM and reference execution passes
- - Expected demo: PWM 100/30, UART TX 0x48, UART RX 0x5A, SPI TX/RX 0xA5/0x3C
+ - Expected demo: PWM 100/30, UART H/0x5A, SPI 0xA5/0x3C
 
 NOTE: This is an offline structural/reference check, not a replacement for ModelSim, Genus, or LEC.
+

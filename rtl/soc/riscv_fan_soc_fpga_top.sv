@@ -18,8 +18,8 @@ module riscv_fan_soc_fpga_top (
   logic [3:0]  debug_state;
 
   riscv_fan_soc #(
-    .IMEM_WORDS(1024),
-    .DMEM_WORDS(1024),
+    .IMEM_WORDS(256),
+    .DMEM_WORDS(256),
     .CFG_WORDS(256),
     .PWM_DEFAULT_PERIOD(32'd100),
     // 50 MHz / 115200 ~= 434 clocks per UART bit.

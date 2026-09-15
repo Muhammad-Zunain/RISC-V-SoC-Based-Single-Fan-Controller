@@ -1,6 +1,5 @@
 # RISC-V SoC-Based Single-Fan Controller with PWM, SPI, and UART
 
-<<<<<<< HEAD
 ## Complete End-to-End RTL, Verification, and ASIC-Oriented Architecture Guide
 
 ---
@@ -986,13 +985,13 @@ Instruction Memory is accessed through a technology-independent wrapper.
 Default organization:
 
 ```text
-1024 words x 32 bits = 4096 bytes = 4 KiB
+256 words x 32 bits = 1024 bytes = 1 KiB
 ```
 
 Address range:
 
 ```text
-0x0000_0000 - 0x0000_0FFF
+0x0000_0000 - 0x0000_03FF
 ```
 
 The wrapper performs:
@@ -1057,13 +1056,13 @@ The CPU waits in `ST_FETCH_WAIT` until this response is visible.
 Default Data SRAM organization:
 
 ```text
-1024 words x 32 bits = 4 KiB
+256 words x 32 bits = 1 KiB
 ```
 
 Address range:
 
 ```text
-0x1000_0000 - 0x1000_0FFF
+0x1000_0000 - 0x1000_03FF
 ```
 
 The wrapper:
@@ -1168,11 +1167,13 @@ The intended physical organizations are:
 
 | Macro | Organization | Purpose |
 |---|---:|---|
-| IMEM | 1024 x 32 | instruction memory / ROM-like storage |
-| DMEM | 1024 x 32 | 1RW data SRAM with byte masks |
+| IMEM | 256 x 32 | instruction memory / ROM-like storage |
+| DMEM | 256 x 32 | 1RW data SRAM with byte masks |
 | Config | 256 x 32 | 1RW configuration SRAM with byte masks |
 
 The current stubs are **not physical SRAMs**. They are placeholders that preserve the logical interface until a PDK/memory compiler is selected.
+
+The exact interface expected from the later custom macro adapter is documented in `docs/ASIC_MEMORY_MACRO_CONTRACT.md`.
 
 For final ASIC implementation, the stubs must be replaced or wrapped around real technology SRAMs/ROMs.
 
@@ -1351,8 +1352,8 @@ Therefore a write occurs once, rather than being repeated every cycle while the 
 
 | Region | Address / Range | Description |
 |---|---|---|
-| IMEM | `0x0000_0000 - 0x0000_0FFF` | 4-KiB Instruction Memory |
-| DMEM | `0x1000_0000 - 0x1000_0FFF` | 4-KiB Data SRAM |
+| IMEM | `0x0000_0000 - 0x0000_03FF` | 4-KiB Instruction Memory |
+| DMEM | `0x1000_0000 - 0x1000_03FF` | 4-KiB Data SRAM |
 | Config | `0x2000_0000 - 0x2000_03FF` | 1-KiB Configuration SRAM |
 | PWM Page | `0x4000_0000 - 0x4000_0FFF` | PWM registers |
 | UART Page | `0x4000_1000 - 0x4000_1FFF` | UART registers |
@@ -2275,7 +2276,15 @@ spi_miso_i
 spi_cs_n_o
 status_halted_o
 status_trap_o
+debug_pc_o
+debug_instr_o
+debug_trap_cause_o
+debug_state_o
 ```
+
+These debug ports are real top-level outputs (not internal-only nets) so the
+CPU debug bus stays reachable and Genus cannot delete the logic that drives
+it as unobservable/unloaded.
 
 ## 38.1 Reset synchronizer
 
@@ -2314,9 +2323,9 @@ This means reset can be asserted immediately, but release is aligned with the sy
 The ASIC top currently selects:
 
 ```text
-IMEM = 1024 x 32
-DMEM = 1024 x 32
-CFG  = 256  x 32
+IMEM = 256 x 32
+DMEM = 256 x 32
+CFG  = 256 x 32
 
 PWM default period    = 100
 UART default baud div = 434
@@ -3174,9 +3183,9 @@ The verified end-to-end demo is:
 
 ```text
 Processor              : 32-bit RV32I multicycle
-Instruction Memory     : 4 KiB default
-Data SRAM              : 4 KiB default
-Configuration SRAM     : 1 KiB default
+Instruction Memory     : 1 KiB default (256 x 32)
+Data SRAM              : 1 KiB default (256 x 32)
+Configuration SRAM     : 1 KiB default (256 x 32)
 
 PWM period             : 100 system-clock cycles
 PWM duty               : 30 system-clock cycles
@@ -3194,8 +3203,8 @@ SPI Master RX          : 0x3C
 DMEM[0] after SPI      : 0x0000003C
 DMEM[1] after UART RX  : 0x0000005A
 
-Full SoC test          : PASS
-RTL compile            : 0 errors, 0 warnings
+Baseline full SoC test : PASS before final 256x32 normalization
+Final package status   : rerun do sim/run_all.do after copying these edits
 ```
 
 ---
@@ -3257,53 +3266,3 @@ Timing/physical signoff
         ->
 Final layout/GDS
 ```
-
-=======
-## 📌 Project Overview
-This project involves the design and verification of a 32-bit System-on-Chip (SoC) based on the **RV32I** instruction set architecture. The primary objective is to drive a simulated cooling fan using a Pulse Width Modulation (PWM) signal while providing serial communication via SPI and UART interfaces. All configuration values are maintained in on-chip SRAM.
-
-## 🏗️ Architecture & Features
-- **RISC-V Core:** Synthesizable 32-bit RV32I core (Single-cycle / Multi-cycle). Implements standard integer computational instructions, control flow, and memory access without complex features like pipelining, MMU, or caches.
-- **Memory:** On-chip Instruction and Data SRAM blocks.
-- **Peripherals (Memory-Mapped):**
-  - **PWM Controller:** Single-channel generator to control fan speed.
-  - **SPI Master:** For high-speed synchronous serial communication.
-  - **UART Transceiver:** For asynchronous serial data transmission and reception.
-- **Interconnect:** Memory-mapped I/O structure connecting the core to memory and peripherals.
-
-## 🧪 Verification Methodology
-1. **Basic Verification:** 
-   - Directed, self-checking SystemVerilog testbenches.
-   - Verifies core instructions, SRAM read/write, SPI transfers, PWM generation, and UART Tx/Rx.
-2. **UVM Verification:** 
-   - Industry-standard Universal Verification Methodology (UVM).
-   - Includes agents, sequences, scoreboards, and coverage models to test fail-safe behaviors, stall detection, and robust RPM measurement.
-
-## ⚙️ Physical Design (ASIC Flow)
-The project includes a complete RTL-to-GDSII physical design flow:
-- Synthesis & Constraints definitions
-- Floorplanning & Power Planning
-- Placement & Clock-Tree Synthesis (CTS)
-- Routing & Sign-off Checks (DRC, LVS)
-- Detailed reporting on Area, Timing, Power, and Congestion.
-
-## 📂 Repository Structure
-```text
-📦 RISCV-Fan-Controller
- ┣ 📂 rtl                 # Synthesizable SystemVerilog/Verilog source code
- ┃ ┣ 📂 core              # ALU, Register File, Control Unit, Datapath
- ┃ ┣ 📂 memory            # Instruction and Data SRAM modules
- ┃ ┗ 📂 peripherals       # PWM, SPI, UART, and Memory Map controller
- ┣ 📂 tb                  # Verification Environments
- ┃ ┣ 📂 basic             # Directed SV Testbenches
- ┃ ┗ 📂 uvm               # UVM testbenches, agents, and scoreboards
- ┣ 📂 pd                  # Physical Design scripts, constraints, and reports
- ┗ 📂 docs                # Architecture document, block diagrams, and layout screenshots
-```
-
-## 🚀 Getting Started
-*(Instructions for compiling, simulating using ModelSim/VCS, and running synthesis scripts will be added as the modules are developed in phases).*
-
-## 📝 License
-This project is developed for educational and academic purposes.
->>>>>>> 8e4e76d72971e6ab99389fe1b74a85f789bd1f87

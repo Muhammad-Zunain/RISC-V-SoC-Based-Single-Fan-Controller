@@ -1,5 +1,5 @@
 module asic_dmem #(
-  parameter integer WORDS  = 1024,
+  parameter integer WORDS  = 256,
   parameter integer ADDR_W = $clog2(WORDS)
 ) (
   input  logic              clk_i,
@@ -12,19 +12,20 @@ module asic_dmem #(
 );
 
 `ifdef ASIC_USE_SRAM_MACROS
-  // Final ASIC flow: replace/bind this abstract macro to a technology SRAM
-  // that supports a 32-bit word and four byte-write enables.
+  // Final ASIC path. Logical contract: 256x32 1RW memory, one-cycle read,
+  // with four byte write enables. A technology-specific adapter may bank
+  // narrower physical SRAM macros while keeping this interface unchanged.
   asic_dmem_macro u_macro (
     .clk_i   (clk_i),
     .cs_i    (en_i),
     .we_i    (we_i),
     .wmask_i (wmask_i),
-    .addr_i  (addr_i[9:0]),
+    .addr_i  (addr_i),
     .wdata_i (wdata_i),
     .rdata_o (rdata_o)
   );
 `else
-  // RTL/ModelSim reference model. The memory is visible to directed TBs.
+  // RTL/ModelSim reference model.
   logic [31:0] mem [0:WORDS-1];
   integer i;
 
@@ -33,7 +34,7 @@ module asic_dmem #(
       mem[i] = 32'd0;
   end
 
-  // One-cycle synchronous 1RW behavior.
+  // One-cycle synchronous 1RW behavior. Writes honor RV32I byte strobes.
   always @(posedge clk_i) begin
     if (en_i) begin
       rdata_o <= mem[addr_i];

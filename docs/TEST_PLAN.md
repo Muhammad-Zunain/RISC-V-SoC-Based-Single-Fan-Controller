@@ -12,6 +12,7 @@
 | `tb_decoder` | all base instruction classes plus illegal encodings |
 | `tb_rv32i_core` | arithmetic, logical, load/store, branch/jump, FENCE, EBREAK |
 | `tb_core_faults` | illegal instruction, load alignment/access, control alignment, ECALL |
+| `tb_core_cycle_count` | multicycle timing: R-type 5, load 7, store 6, JAL/JALR 4 cycles |
 | SRAM tests | preload, word/byte strobes, range behavior |
 | `tb_pwm` | disabled, 0%, nominal 30%, 100%, register strobes |
 | `tb_uart_tx` | 0x55, 0xA5, H, busy/done, valid frames |
@@ -20,6 +21,8 @@
 | `tb_spi_master` | Mode-0 A5 TX / 3C RX, busy/done/idle |
 | `tb_spi_peripheral` | MMIO, clk divider, done/error W1C |
 | `tb_mmio_decoder` | DMEM/CFG/PWM/UART/SPI/unmapped decoding |
+
+Active logical memories are IMEM/DMEM/CFG = **256 x 32**. Directed integration tests may instantiate smaller parameter values to reduce simulation runtime; those smaller depths are testbench-local and do not change the ASIC top configuration.
 
 ## Subsystem verification
 

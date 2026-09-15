@@ -13,19 +13,20 @@ module asic_config_mem #(
 );
 
 `ifdef ASIC_USE_SRAM_MACROS
-  // Final ASIC flow: replace/bind this abstract macro to the selected
-  // 256x32 configuration SRAM macro.
+  // Final ASIC path. Logical contract matches DMEM: 256x32 1RW memory,
+  // one-cycle read, four byte write enables.
   asic_config_macro u_macro (
     .clk_i   (clk_i),
     .cs_i    (en_i),
     .we_i    (we_i),
     .wmask_i (wmask_i),
-    .addr_i  (addr_i[7:0]),
+    .addr_i  (addr_i),
     .wdata_i (wdata_i),
     .rdata_o (rdata_o)
   );
 `else
-  // RTL/ModelSim reference model. Visible for testbench preload.
+  // RTL/ModelSim reference model. The config table can be initialized from
+  // a HEX file or overwritten directly by a directed testbench.
   logic [31:0] mem [0:WORDS-1];
   integer i;
 
@@ -37,7 +38,6 @@ module asic_config_mem #(
       $readmemh(INIT_FILE, mem);
   end
 
-  // One-cycle synchronous 1RW behavior.
   always @(posedge clk_i) begin
     if (en_i) begin
       rdata_o <= mem[addr_i];
